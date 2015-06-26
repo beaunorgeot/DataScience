@@ -1,0 +1,118 @@
+---
+title: "Motor Trend Analysis"
+author: "Beau Norgeot"
+date: "June 19, 2015"
+output: html_document
+---
+### Prompt
+You work for Motor Trend, a magazine about the automobile industry. Looking at a data set of a collection of cars, they are interested in exploring the relationship between a set of variables and miles per gallon (MPG) (outcome). They are particularly interested in the following two questions:
+“Is an automatic or manual transmission better for MPG”
+"Quantify the MPG difference between automatic and manual transmissions"
+Include a first paragraph executive summary
+Take the mtcars data set and write up an analysis to answer their question using regression models and exploratory data analyses.
+
+```{r setup, include=FALSE}
+
+```
+
+### Executive Summary:
+I went through 5 steps to evaluate whether an automatic or manual transmission was better for fuel economy. First, exploratory analysis was done to get a quick understanding of the data and form a simple hypothesis. Second, a
+Hypothesis test was performed to ensure that differences seen did not come from sampling error. Third, a Correlation Test was done to check for non-independence between possible additional confonding variables, such as weight and number of cylinders. The interaction between these variables was assessed using a Liklihood Ratio Test. Fourth, Linear Regression was used to fit a model to the data to make predictions about fuel economy given a vehicle's weight. Multiple models were examined to see which combination of predictors best explained and predicted mpg. Finally, Regression Diagnostics were performed to check the validity of the model and verify assumptions. 
+
+The outcome was clear, manual transmissions are superior over automatics for mpg. An average of 7mpg can be gained from choosing a manual transmission vehicle. The best model to predict mpg included vehcile weight and cylinder number as well as the interaction between weight and transmission type in addition to transmission type alone. This model explains 86% of mpg and is accurate within approximately 2mpg.
+
+### Exploratory Analysis
+```{r, Load Libraries and data, message=FALSE, results='hide'}
+library(dplyr)
+library(ggplot2)
+data(mtcars)
+cars <- tbl_df(mtcars)
+summary(cars)
+```
+
+```{r, Exploratory Analysis,,fig.width=3, fig.height=3}
+# str(cars) There's a lot of data here, that adds excessive length to the doc
+help(mtcars) # 'am' is the variable for Transmission (0 = automatic, 1 = manual)
+mpgByTrans <- cars %>%
+  group_by(am) %>%
+  summarise(avgMPG = mean(mpg))
+View(mpgByTrans) #automatic has a much lower raw average for mpg than manual does
+
+# Do a quick boxplot to look at variation as well as averages
+ggplot(cars, aes(x=factor(am), y=mpg)) + geom_boxplot()
+# First glance shows manual looking much better than auto for mpg
+```
+
+
+First glance seems to indicate a pretty strong relationship between fuel economy and transmission type. Manual transmission vehicles appear to have much greater MPG than automatics. Next step is to perform a hypotheis test (t-test) to determine if the differences are just do to sampling error. The Null Hypothesis being that the average mpg is the same for both types of transmissions. 
+
+```{r, T-Test}
+TrannyTest <- t.test(mpg ~ am, data=cars)
+TrannyTest$p.value
+TrannyTest$conf.int
+```
+
+The p-value from our test is pretty compelling at .001, it's fairly safe to reject the Null Hypothesis. It is highly likely that there is a true difference in means. The 95% confidence interval is between (-11,-3). This interval does not span the Null Hypothesis (which is that difference between the means = 0), which is further evidence that there is true difference in the means of the auto and manual populations. It's worth mentioning that a significant p-value and confidence interval that do not include the Null Hypothesis will always agree.
+
+### Correlation
+The next step is to check for correlation between additional variables to check for confounding. The most obvious variables that may be effecting fuel economy to me are weight (wt) and the number of cylinders (cyl). Is it possible that the automatic cars sampled simply are heavilier and/or have larger engines? The Null Hypothesis for a correlation test is that two variables are NOT correlated.
+
+```{r, Correlation View,,fig.width=3, fig.height=3}
+quickL <- ggplot(cars, aes(wt,mpg))
+quickL + geom_point() #pretty strong relationship here upWt, downMpg
+```
+```{r, Correlation Tests, results='hide'}
+cor.test(cars$mpg,cars$wt) #tight confidence interval,highly negative correlation coeffecient,very low p-value
+cor.test(cars$cyl,cars$mpg) #same as above
+cor.test(cars$cyl, cars$wt) # strong positive correlation
+```
+
+Fuel economy (mpg), the number of cylinders, and vehicle weight are all strongly correlated to each other. Cylinder Number and Weight have a, not surprisingly, negative correlation with MPG. Cylinder Number and Weight have a strong postive correlation to each other, which also makes sense. The Regression model will have to account for all of this as best as possible.
+
+### Regression Model
+The next step here is to generate a linear model. The model will make it possible to make predictions about fuel economy given a vehicle's weight. The model will also allow us examine whether a linear relationship exists between mpg and transmission type. Additionally, we can examine a couple of different models to see if which model best explains and predicts mpg. Due to document length restrictions I'm only going to test mpg, weight, and transmission type. However, further analysis should build models that include cylinder number.
+
+```{r, Linear Regression1, message=FALSE, results='hide',fig.width=3, fig.height=3}
+model <- lm(mpg ~ am, data=cars)
+summary(model) # RSE=4.9 (tran predicts mpg w/an average error of 4.9mpg), R-squared=.36 (only 36% of mpg is explained by tranny type)
+model$coef #switching from auto to manual gets you about 7.24 extra mpg's
+
+#build a mutliplicative model
+model1 <- lm(cars$mpg ~ cars$am + cars$wt)
+summary(model1) #RSE=3.1, R-squared=.75. This is a much better model
+```
+```{r,Linear Regression2, message=FALSE, results='hide',fig.width=3, fig.height=3}
+#Include interaction between weight and transmission type
+model2 <- lm(cars$mpg ~ cars$am + cars$wt + cars$am:cars$wt)
+summary(model2) #this one's the best so far
+
+#Does the interaction matter statistically?
+library(lmtest)
+lrtest(model2, model1) #p.value is .0004 the interaction matters, high p.value would mean interaction didn't matter
+# Just for fun, here's the best model using these vars
+model3 <- lm(cars$mpg ~ cars$am + cars$wt + cars$cyl + cars$am:cars$wt + cars$wt:cars$cyl)
+```
+
+Model Choice and discussion
+The first model only considered the effect of transmission type on mpg, and served as a baseline. The Residual Squared Error was 4.9 which tells us that transmission predicts mpg w/an average error of 4.9mpg. The R-squared value for the model was .36, only 36% of mpg is explained by transmission type. The slope coeffecient of 7.24 says that switching from auto to manual gets you about 7.24 extra mils per gallon. 
+
+The RSE and R-squared values weren't great, so I built another model that had 2 predictors, transmission type and weight. The second model (named model1) was compared to a third model (model2) which looked at the interaction between transmission and weight as a predictor for mpg. A liklihood ratio test (lrtest) was performed to see if the interaction mattered, with the Null being that the interaction did not matter. The p.value for the LR test was .0004, highly signficant, so the model that included the interaction was kept. The RSE for model including weight, transmission, and their interaction as predictors was 2.6 and the R-squared was .83. This was a huge improvement, the model explains 83% of the variance in mpg with an error of only 2.6 miles per gallon. (Note: adding the number of cylinders improved the model's explanatory power to 88% w/ only 2.3mpg average error.)
+
+### Regression Diagnostics
+Final step is to check the validity of the model. Now we need to check the 4 assumptions required to use a linear model as an explainer/predictor. 
+
+1. The Y-values, or the errors, are independent (This actually requires Knowledge of Study Design or Data Collection and won't/can't be checked) The other 3 Assumptions can be checked by examining the model resiudals or errors. 
+2. The Y-values can be expressed as a linear function of the X-variable
+3. The variation of observations around the regression line (the Residual SE) is constant (homoscedasticity)
+4. For a given value of X, the Y-values (or the errors) are Normally distributed
+
+These can be checked very simply with the 4 plots generated by base-R's plot() function. 
+
+```{r, Regression Diagnostics,fig.width=4, fig.height=4}
+par(mfrow = c(2,2))
+plot(model2)
+
+```
+
+### Regression Diagnostics
+Overall, the four plots can be used to diagnose specific problems. The upper left plot shows whether the wrong model was fitted (e.g., a line versus a parabola). The red trend line here is pretty flat, so the linearity assumption seems valid. The upper right plot shows whether the residuals are normally distributed. All the points are roughly on a diagonal line, so we can say that the errors are Normally distributed. The lower left plot shows whether the data are homoscedastic (does residual value change as a function of x? ie are errors larger, on average, as x increases/decreases). Here again, we see a pretty flat trend line, we have homoscedasticity. The lower right plot shows whether there are influential outliers. Since there are no points with extreme Cook's Distances, there don't appear to be any observations that exert too much influence or leverage.
